@@ -72,14 +72,14 @@ TRACES = [
     ),
     dict(
         column='PMin[W]',
-        ratio=1,
+        ratio=1000000,
         name='PMin',
         yaxis='y1',
         legendgroup='G-Flex',
     ),
     dict(
         column='PMax[W]',
-        ratio=1,
+        ratio=1000000,
         name='PMax',
         yaxis='y1',
         legendgroup='G-Flex',
@@ -154,7 +154,7 @@ TRACES = [
 COLORS = dict(
     P='blue', Q='red', P_TSC='cyan', Q_TSC='orange', U='green', MWh='firebrick'
 )
-DASH = dict(setTSC='dot', set_FB='dash', MWh='dash')
+DASH = dict(setTSC='dot', set_FB='dash', MWh='dash', Min='dot', Max='dot')
 WIDTH = dict(Min=1, Max=1, MWh=2)
 
 LINES_PARAM = ['color', 'dash', 'width']
@@ -185,10 +185,7 @@ def prepare_data_dict(data, traces_par: list = TRACES):
                 **trace_p,
                 line=line_par,
             )
-            # if 'P' in trace.name:
-            #     trace.line.color = COLORS['P']
-            # elif 'Q' in trace.name:
-            #     trace.line.color = COLORS['Q']
+
             trace = traces[name]
             for leg in COLORS:
                 if leg in name:
@@ -199,15 +196,6 @@ def prepare_data_dict(data, traces_par: list = TRACES):
             for leg in WIDTH:
                 if leg in name:
                     trace['line'].update(dict(width=WIDTH[leg]))
-
-            # if 'set[' in name:
-            #     trace['line'].update(dict(dash = 'dash'))
-            # if 'legendgroup' in trace and trace['legendgroup'] == 'G-Flex':
-            #     trace['line'].update(dict(width=1, dash='dot'))
-            # if name in COLORS:
-            #     trace['line'].update(dict(color = COLORS[name]))
-            # elif 'Q_TSC' in name:
-            #     trace['line'].update(dict(color = 'orange'))
 
     return traces
 
@@ -313,75 +301,6 @@ def plot_df(data, slider=False):
     traces = prepare_data_dict(data, TRACES)
     for t in traces.values():
         figure.add_trace(go.Scatter(**t))
-    # figure.add_trace(
-    #     go.Scatter(
-    #         x=data.index,
-    #         y=data['f[Hz]'].values,
-    #         name="freq",
-    #         yaxis="y2",
-    #         line=dict(color='lightgrey'),
-    #         visible='legendonly'
-    #     )
-    # )
-    # cols_dict['freq'] = 'f[Hz]'
-
-    # figure.add_trace(
-    #     go.Scatter(x=data.index, y=data['U_avg'].values, name="U_avg", yaxis="y3")
-    # )
-    #
-    # figure.add_trace(
-    #     go.Scatter(
-    #         x=data.index, y=data['P_set[W]'].values, name='P_set[W]', yaxis="y1"
-    #     )
-    # )
-    # figure.add_trace(
-    #     go.Scatter(
-    #         x=data.index,
-    #         y=data['P[W]'].values,
-    #         name='P[W]',
-    #         yaxis="y1",
-    #     )
-    # )
-    #
-    # figure.add_trace(
-    #     go.Scatter(
-    #         x=data.index, y=data['Q_set[VAr]'].values, name='Q_set[VAr]', yaxis="y1"
-    #     )
-    # )
-    #
-    # figure.add_trace(
-    #     go.Scatter(
-    #         x=data.index,
-    #         y=data['Q[VAr]'].values,
-    #         name='Q[VAr]',
-    #         yaxis="y1",
-    #         line=dict(color=COLORS['Q']),
-    #     )
-    # )
-    #
-    # for c in ['PMin[kW]', 'PMax[kW]']:
-    #     figure.add_trace(
-    #         go.Scatter(
-    #             x=data.index,
-    #             y=data[c].values,
-    #             name=c,
-    #             yaxis="y1",
-    #             legendgroup='G-Flex',
-    #         )
-    #     )
-    # for trace in figure.data:
-    #     if 'P' in trace.name:
-    #         trace.line.color = COLORS['P']
-    #     elif 'Q' in trace.name:
-    #         trace.line.color = COLORS['Q']
-    #     if 'set[' in trace.name:
-    #         trace.line.dash = 'dash'
-    #     if trace.legendgroup == 'G-Flex':
-    #         trace.line.update(width=1, dash='dot')
-    #     if trace.name in COLORS:
-    #         trace.line.color = COLORS[trace.name]
-    #     elif 'Q_TSC' in trace.name:
-    #         trace.line.color = 'orange'
 
     figure.update_layout(
         margin=dict(l=0, r=0, b=0, t=0),
@@ -563,7 +482,7 @@ if __name__ == '__main__':
 
     if args.file:
         if Path(args.file).exists():
-            file = args.file
+            file = Path(args.file)
         else:
             file = folder / args.file
     else:
