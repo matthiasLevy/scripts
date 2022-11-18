@@ -16,9 +16,9 @@ from path import Path
 
 IPs = dict(AWC1='10.2.2.201', AWC2='10.2.2.205')
 FOLDER = r'G:\.shortcut-targets-by-id\1zJg6xXMQtwsL4z7K86PE8FS6FspMhFec\04_PROJETS\21_Deux-Acren\13_EXECUTION\Réception\Tests préalables\DEIF-exports'
-# FILE = "%Y%m%d_%H%M%S-AWC{awc}.log"
-FILE = "AWC{awc}_raw.log"
-FILE_HEADER = "AWC{awc}.log"
+
+FILE_PATTERN = "{date}_AWC{awc}.log"
+DATEFORMAT = '%Y%m%d_%H%M'
 
 TIMELOGGER = dict(when='H', interval=1, date_fmt='%Y%m%d_%H%M')
 
@@ -26,11 +26,12 @@ test = True
 if test:
     FOLDER = Path(r'C:\Users\MLevy\Documents\2Acren')
     FOLDER /= 'tmp'
-    TIMELOGGER = dict(when='S', interval=300, date_fmt='%Y%m%d_%H%M%S')
+    TIMELOGGER = dict(when='S', interval=20)
+    DATEFORMAT = '%Y%m%d_%H%M%S'
 
 class TimedRotatingFileHandlerWithHeader(TimedRotatingFileHandler):
     def __init__(
-        self, logfile, header='', date_fmt='%Y%m%d_%H%M', **kwargs
+        self, logfile:Path, header='', date_fmt=DATEFORMAT, **kwargs
     ):
         self._start_time = datetime.datetime.utcnow()
         self._datefmt = date_fmt
@@ -38,10 +39,8 @@ class TimedRotatingFileHandlerWithHeader(TimedRotatingFileHandler):
         super(TimedRotatingFileHandlerWithHeader, self).__init__(
             logfile, utc=True, **kwargs
         )
-        # logging.handlers.TimedRotatingFileHandler.__init__(logfile, when, interval)
 
         self._header = header
-
         self._write_header(self.baseFilename)
 
     @property
@@ -70,10 +69,9 @@ class TimedRotatingFileHandlerWithHeader(TimedRotatingFileHandler):
     def header(self, header):
         self._header = header
 
-    def namer(self, *args, now=False):
-        time = datetime.datetime.utcnow() if now else self._start_time
-        date_str = time.strftime(self._datefmt)
-        name = self._folder / f"{date_str}_{self._basename}"
+    def namer(self, *args):
+        date_str = self._start_time.strftime(self._datefmt)
+        name = self._folder / self._basename.format(date=date_str)
         return name
 
     def rotation_filename(self, default_name):
@@ -133,15 +131,10 @@ def create_data_logger(file_basename, header='', level = logging.DEBUG):
 
 
 async def lauch_telnet(awc=1, folder=None):
-    """lauch a telnet reading command on awc `awc`to file `file`"""
+    """Launch a telnet reading command on awc `awc`to file `file`"""
     if not folder:
         folder = Path(FOLDER)
-    filename = datetime.datetime.now().strftime(FILE.format(awc=awc))
-    file = folder / filename
-    file_header = folder / FILE_HEADER.format(awc=awc)
-
-    # logger = get_logger(file, ts= False)
-    # print(f"Logging AWC {awc} in {file}")
+    filename_pattern = folder / FILE_PATTERN.format(awc=awc, date='{date}')
 
     use_telnetlib3 = False
     if use_telnetlib3:
@@ -158,19 +151,16 @@ async def lauch_telnet(awc=1, folder=None):
             try:
                 with telnetlib.Telnet(host=get_ip(awc), port=23) as tnet:
                     header = tnet.read_until(b'\r\n').decode().rstrip()
-                    logger_header = create_data_logger(file_header, header=header)
-                    for h in logger_header.handlers:
+                    data_logger = create_data_logger(filename_pattern, header=header)
+                    for h in data_logger.handlers:
                         print(
                             f"Logging AWC {awc} in file \n{h.baseFilename}"
-                            # + f"with pattern {h.rawFilename}:"
-                        )
-                    # logger.info(header)
+
 
                     retry_delay = 0
                     while True:
                         line = tnet.read_until(b'\r\n').decode().rstrip()
-                        # logger.info(line)
-                        logger_header.info(line)
+                        data_logger.info(line)
                         await asyncio.sleep(0)
             except (
                 ConnectionResetError,
@@ -188,8 +178,7 @@ async def call_logs():
     loggers = dict()
     for awc in range(1, 3):
         loggers[awc] = lauch_telnet(awc)
-        # asyncio.create_task(loggers[awc])
     await asyncio.gather(*loggers.values())
 
-
-asyncio.run(call_logs())
+if __name__ == '__main__':
+    asyncio.run(call_logs())
