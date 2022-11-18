@@ -22,11 +22,11 @@ FILE_HEADER = "AWC{awc}.log"
 
 TIMELOGGER = dict(when='H', interval=1, date_fmt='%Y%m%d_%H%M')
 
-test = False
+test = True
 if test:
     FOLDER = Path(r'C:\Users\MLevy\Documents\2Acren')
     FOLDER /= 'tmp'
-    TIMELOGGER = dict(when='S', interval=20, date_fmt='%Y%m%d_%H%M%S')
+    TIMELOGGER = dict(when='S', interval=300, date_fmt='%Y%m%d_%H%M%S')
 
 class TimedRotatingFileHandlerWithHeader(TimedRotatingFileHandler):
     def __init__(
@@ -41,10 +41,8 @@ class TimedRotatingFileHandlerWithHeader(TimedRotatingFileHandler):
         # logging.handlers.TimedRotatingFileHandler.__init__(logfile, when, interval)
 
         self._header = header
-        self._loggger = logger
-        logger.addHandler(self)
 
-        self._write_header()
+        self._write_header(self.baseFilename)
 
     @property
     def baseFilename(self):
@@ -60,103 +58,45 @@ class TimedRotatingFileHandlerWithHeader(TimedRotatingFileHandler):
         self._folder = self._baseFilename.parent
         self._basename = self._baseFilename.basename()
 
-    def _write_header(self):
-        file = self._loggger.handlers[0].baseFilename
-        # print(f"Writing header in {file}")
-        if self._loggger is not None and self._header != "":
-            self._loggger.info(self._header)
-            # print("-> OK")
+    def _write_header(self, file):
+        if self._header:
+            file.write_lines([self._header], append=True)
 
-    def doRollover(self):
-        # super(TimedRotatingFileHandler_withheader, self).doRollover()
-        # logging.handlers.TimedRotatingFileHandler.doRollover(self)
+    @property
+    def header(self):
+        return self._header
 
-        # Correcting original Rollover for naming:
-        if self.stream:
-            self.stream.close()
-            self.stream = None
-        # get the time that this sequence started at and make it a TimeTuple
-        currentTime = int(time.time())
-        dstNow = time.localtime(currentTime)[-1]
-        t = self.rolloverAt - self.interval
-        if self.utc:
-            timeTuple = time.gmtime(t)
-        else:
-            timeTuple = time.localtime(t)
-            dstThen = timeTuple[-1]
-            if dstNow != dstThen:
-                if dstNow:
-                    addend = 3600
-                else:
-                    addend = -3600
-                timeTuple = time.localtime(t + addend)
-
-        # Changes below
-        self._start_time = datetime.datetime.utcnow()
-        if Path(self.baseFilename).exists():
-            Path(self.baseFilename).remove()
-
-        # End of changes
-
-        if not self.delay:
-            self.stream = self._open()
-        newRolloverAt = self.computeRollover(currentTime)
-        while newRolloverAt <= currentTime:
-            newRolloverAt = newRolloverAt + self.interval
-        # If DST changes and midnight or weekly rollover, adjust for this.
-        if (self.when == 'MIDNIGHT' or self.when.startswith('W')) and not self.utc:
-            dstAtRollover = time.localtime(newRolloverAt)[-1]
-            if dstNow != dstAtRollover:
-                if (
-                    not dstNow
-                ):  # DST kicks in before next rollover, so we need to deduct an hour
-                    addend = -3600
-                else:  # DST bows out before next rollover, so we need to add an hour
-                    addend = 3600
-                newRolloverAt += addend
-        self.rolloverAt = newRolloverAt
-
-        print(f"New file created for logger: {self.baseFilename}")
-        self._write_header()
-
-        # self._start_time = datetime.datetime.utcnow()
-
-    def setHeader(self, header):
+    @header.setter
+    def header(self, header):
         self._header = header
 
-    def configureHeaderWriter(self, log, header=None):
-        self._header = header or self._header
-        self._loggger = log
-
-    def namer(self, *args):
-        date_str = self._start_time.strftime(self._datefmt)
-        name = self._folder / (date_str + '_' + self._basename)
+    def namer(self, *args, now=False):
+        time = datetime.datetime.utcnow() if now else self._start_time
+        date_str = time.strftime(self._datefmt)
+        name = self._folder / f"{date_str}_{self._basename}"
         return name
 
-    #
-    # def rotate(self, source, dest):
-    #     """
-    #     When rotating, rotate the current log.
-    #
-    #     The default implementation calls the 'rotator' attribute of the
-    #     handler, if it's callable, passing the source and dest arguments to
-    #     it. If the attribute isn't callable (the default is None), the source
-    #     is simply renamed to the destination.
-    #
-    #     :param source: The source filename. This is normally the base
-    #                    filename, e.g. 'test.log'
-    #     :param dest:   The destination filename. This is normally
-    #                    what the source is rotated to, e.g. 'test.log.1'.
-    #     """
-    #     import os
-    #     if not callable(self.rotator):
-    #         # Issue 18940: A file may not have been created if delay is True.
-    #         if os.path.exists(source):
-    #             print(f"Renaming {source} in {dest}")
-    #             Path(source).move(dest)
-    #     else:
-    #         self.rotator(source, dest)
+    def rotation_filename(self, default_name):
+        """
+        Overwrite default behaviour called in doRollover
+        :param default_name: unused, for compatibility only
+        :return: filename of next file for rotating logging
+        """
+        self._start_time = datetime.datetime.utcnow()
+        return self.namer()
 
+
+    def rotate(self, source, dest):
+        """
+        Overwriting rotate method made useless because baseFilename already changed.
+        We simply need to add a header
+        :param source: The source filename. This is normally the base
+                       filename, e.g. 'test.log'
+        :param dest:   The destination filename. This is normally
+                       what the source is rotated to, e.g. 'test.log.1'.
+        """
+        print(f"New file created for logger: {self.baseFilename}")
+        self._write_header(self.baseFilename)
 
 
 def get_ip(awc):
@@ -217,7 +157,6 @@ def get_logger(file, ts=False):
 def get_logger_header(file, header=''):
     name = 'AWC_'
     logger = logging.getLogger(file)
-    logger.setLevel(logging.DEBUG)
     # logger.basicConfig(filename=filename, encoding='utf-8', level=logging.DEBUG)
     handler = TimedRotatingFileHandlerWithHeader(
         file,
@@ -226,12 +165,12 @@ def get_logger_header(file, header=''):
         header=header,
         logger=logger,
     )
-    # handler = TimedRotatingFileHandler_withheader(file, when='S', interval=15, date_fmt='%Y%m%d_%H%M%S',
-    #                                               atTime='midnight', header=header, logger=logger)
 
     handler.setFormatter(logging.Formatter('%(message)s'))
     # while logger.hasHandlers():
     #     logger.removeHandler(logger.handlers[0])
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
     return logger
 
 
