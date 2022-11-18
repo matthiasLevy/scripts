@@ -30,7 +30,7 @@ if test:
 
 class TimedRotatingFileHandlerWithHeader(TimedRotatingFileHandler):
     def __init__(
-        self, logfile, header='', logger=None, date_fmt='%Y%m%d_%H%M', **kwargs
+        self, logfile, header='', date_fmt='%Y%m%d_%H%M', **kwargs
     ):
         self._start_time = datetime.datetime.utcnow()
         self._datefmt = date_fmt
@@ -114,68 +114,26 @@ def search_telnet_reader(awc=1):
         return telnets[0]
 
 
-# @asyncio.coroutine
-# def shell(reader, writer):
-#     while True:
-#         # read stream until '?' mark is found
-#         outp = yield from reader.read(1024)
-#         if not outp:
-#             # End of File
-#             break
-#         elif '?' in outp:
-#             # reply all questions with 'y'.
-#             writer.write('y')
-#
-#         # display all server output
-#         print(outp, flush=True)
-#
-#     # EOF
-#     print()
-
-
-def get_logger(file, ts=False):
-    name = 'AWC_raw' + ('no_ts' if not ts else 'ts')
-    logger = logging.getLogger(file)
-    # logger.basicConfig(filename=filename, encoding='utf-8', level=logging.DEBUG)
-    handler = logging.handlers.TimedRotatingFileHandler(
-        file, when='H', atTime='midnight'
-    )
-    if ts:
-        format = '%(asctime)s;%(message)s'
-        formatter = logging.Formatter(format, datefmt='%m/%d/%Y %H:%M:%S.')
-    else:
-        format = '%(message)s'
-        formatter = logging.Formatter(format)
-    handler.setFormatter(formatter)
-    while logger.hasHandlers():
-        logger.removeHandler(logger.handlers[0])
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
-    return logger
-
-
-def get_logger_header(file, header=''):
-    name = 'AWC_'
-    logger = logging.getLogger(file)
+def create_data_logger(file_basename, header='', level = logging.DEBUG):
+    logger = logging.getLogger(file_basename)
     # logger.basicConfig(filename=filename, encoding='utf-8', level=logging.DEBUG)
     handler = TimedRotatingFileHandlerWithHeader(
-        file,
+        file_basename,
         **TIMELOGGER,
         # atTime='midnight',
         header=header,
-        logger=logger,
     )
-
     handler.setFormatter(logging.Formatter('%(message)s'))
-    # while logger.hasHandlers():
-    #     logger.removeHandler(logger.handlers[0])
+
+    while logger.hasHandlers():
+        logger.removeHandler(logger.handlers[0])
     logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(level)
     return logger
 
 
 async def lauch_telnet(awc=1, folder=None):
-    """lauch a telet reading command on awc `awc`to file `file`"""
+    """lauch a telnet reading command on awc `awc`to file `file`"""
     if not folder:
         folder = Path(FOLDER)
     filename = datetime.datetime.now().strftime(FILE.format(awc=awc))
@@ -200,7 +158,7 @@ async def lauch_telnet(awc=1, folder=None):
             try:
                 with telnetlib.Telnet(host=get_ip(awc), port=23) as tnet:
                     header = tnet.read_until(b'\r\n').decode().rstrip()
-                    logger_header = get_logger_header(file_header, header=header)
+                    logger_header = create_data_logger(file_header, header=header)
                     for h in logger_header.handlers:
                         print(
                             f"Logging AWC {awc} in file \n{h.baseFilename}"
