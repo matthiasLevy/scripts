@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
-from path import Path
-from typing import Union
 import datetime
+from io import StringIO
+from typing import Union
 
-from plotly import express as px
+import pandas as pd
 import plotly.graph_objects as go
 import plotly.graph_objs._figure
-import pandas as pd
-from io import StringIO
+from path import Path
+from plotly import express as px
 
 
 class AWC_log_reader:

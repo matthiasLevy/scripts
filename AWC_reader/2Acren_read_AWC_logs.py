@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 
-import sys
-from path import Path
 import datetime
+import sys
 from argparse import ArgumentParser
-
-from plotly import express as px
-import plotly.graph_objects as go
-import plotly.graph_objs._figure
-import pandas as pd
 from io import StringIO
 
-from dash import Dash, html, dcc
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.graph_objs._figure
+from dash import Dash, dcc, html
 from dash.dependencies import Input, Output, State
+from path import Path
+from plotly import express as px
 
 # Using Plotly as default plot for pandas
 pd.set_option("plotting.backend", "plotly")
@@ -22,7 +21,7 @@ FORMAT_DATETIME = '%Y%m%d_%H%M%S'
 # dict of traces by name
 
 TRACES = [
-# Timestamp_UTC; P[W]; Q[VAr]; U_L1L2[V]; U_L2L3[V]; U_L3L1[V]; I_L1[A]; I_L2[A]; I_L3[A]; f[Hz]; PMin[W]; PMax[W]; P_setYuso[W]; Q_setYuso[W]; P_setToTSC[W]; Q_setToTSC[W]; P_setReadback[W]; Q_setReadback[W]; E[Wh]; E_PMax[Wh]
+    # Timestamp_UTC; P[W]; Q[VAr]; U_L1L2[V]; U_L2L3[V]; U_L3L1[V]; I_L1[A]; I_L2[A]; I_L3[A]; f[Hz]; PMin[W]; PMax[W]; P_setYuso[W]; Q_setYuso[W]; P_setToTSC[W]; Q_setToTSC[W]; P_setReadback[W]; Q_setReadback[W]; E[Wh]; E_PMax[Wh]
     dict(
         column='f[Hz]',
         ratio=1,
@@ -39,9 +38,8 @@ TRACES = [
         color='firebrick',
         dash='dash',
     ),
-    dict(
-        column='P[W]', ratio=1, name='P[W]', yaxis='y1', color='blue', dash='solid'
-    ),
+    dict(column='P[W]', ratio=1, name='P[W]', yaxis='y1', color='blue', dash='solid'),
+    dict(column='P[W]_2', ratio=1, name='P[W]', yaxis='y1', color='blue', dash=':'),
     dict(
         column='Q[VAr]',
         ratio=1,
@@ -59,9 +57,7 @@ TRACES = [
         yaxis='y1',
         color='blue',
     ),
-    dict(
-        column='Q_setReadback[W]', ratio=1, name='Q_set_FB', yaxis='y1', color='red'
-    ),
+    dict(column='Q_setReadback[W]', ratio=1, name='Q_set_FB', yaxis='y1', color='red'),
     dict(
         column='U_avg',
         ratio=0.001,
@@ -84,8 +80,7 @@ TRACES = [
         yaxis='y1',
         legendgroup='G-Flex',
     ),
-    ] +\
-         [
+] + [
     # Timestamp_UTC; P[kW]; Q[kvar]; U_L1L2[V]; U_L2L3[V]; U_L3L1[V]; I_L1[A]; I_L2[A]; I_L3[A]; f[mHz]; PMin[kW]; PMax[kW]; P_set[kW]; Q_set[kW]; P_setToTSC[kW]; Q_setToTSC[kW]; P_setReadback[kW]; Q_setReadback[kW]; E[kWh]; E_PMax[kWh]; P_TSC[kW]; Q_TSC[kW]; Q(U) Inputs/Outputs:; 1;2;3;4;5;6
     dict(
         column='f[mHz]',
@@ -101,6 +96,14 @@ TRACES = [
         name='E[MWh]',
         yaxis='y4',
         color='firebrick',
+        dash='dash',
+    ),
+    dict(
+        column='E_PMax[kWh]',
+        ratio=0.001,
+        name='E_Pmax[MWh]',
+        yaxis='y4',
+        color='black',
         dash='dash',
     ),
     dict(
@@ -152,17 +155,17 @@ TRACES = [
     ),
 ]
 COLORS = dict(
-    P='blue', Q='red', P_TSC='cyan', Q_TSC='orange', U='green', MWh='firebrick'
+    P='blue', Q='red', P_TSC='cyan', Q_TSC='orange', U='green'  # , MWh='firebrick'
 )
 DASH = dict(setTSC='dot', set_FB='dash', MWh='dash', Min='dot', Max='dot')
 WIDTH = dict(Min=1, Max=1, MWh=2)
 
 LINES_PARAM = ['color', 'dash', 'width']
 
-FREQ_RESAMPLE = '5S'  # resampling frequency or None
-freq_update = 2  # seconds
+FREQ_RESAMPLE = '10S'  # resampling frequency or None 'L' for milliseconds
+freq_update = 6  # seconds
 
-detail_duration_minutes = 30
+detail_duration_minutes = 5
 
 
 def prepare_data_dict(data, traces_par: list = TRACES):
@@ -206,9 +209,9 @@ def _read_file_dt(filename):
     )
 
 
-def search_last_file_content(folder, replace_semicolon=False):
+def search_last_file_content(folder, pattern='*AWC*.log', replace_semicolon=False):
     # folder /= '20221017'
-    files = list(folder.walk('*AWC*.log'))
+    files = list(folder.walk(pattern))
     files.sort(key=_read_file_dt)
 
     file = files[-1]
@@ -224,6 +227,18 @@ def search_last_file_content(folder, replace_semicolon=False):
         file_content = file.open('r').read()
         file_content = StringIO(file_content.replace(';\n', '\n'))
     return file_content
+
+
+def read_data(file_content, skip_lines=0, file2=None):
+    data = read_file_data(file_content, skip_lines)
+    if file2:
+        data2 = read_file_data(file2, skip_lines)
+        data2.columns = data2.columns + '_2'
+        data = pd.concat(
+            [data.resample('1S').mean(), data2.resample('1S').mean()], axis=1
+        )
+        print(f"Columns: {data.columns}")
+    return data
 
 
 def read_file_data(file_content, skip_lines=0):
@@ -250,27 +265,7 @@ def read_file_data(file_content, skip_lines=0):
     )
 
     data.columns = data.columns.str.replace(' ', '')
-    # Timestamp_UTC; P[W]; Q[VAr]; U_L1L2[V]; U_L2L3[V]; U_L3L1[V]; I_L1[A]; I_L2[A]; I_L3[A]; f[Hz]; PMin[W]; PMax[W]; P_setYuso[W]; Q_setYuso[W]; P_setToTSC[W]; Q_setToTSC[W]; P_setReadback[W]; Q_setReadback[W]; E[Wh]; E_PMax[Wh]
-    # Timestamp_UTC; P[kW]; Q[kvar]; U_L1L2[V]; U_L2L3[V]; U_L3L1[V]; I_L1[A]; I_L2[A]; I_L3[A]; f[mHz]; PMin[kW]; PMax[kW]; P_set[kW]; Q_set[kW]; P_setToTSC[kW]; Q_setToTSC[kW]; P_setReadback[kW]; Q_setReadback[kW]; E[kWh]; E_PMax[kWh]; P_TSC[kW]; Q_TSC[kW]; Q(U) Inputs/Outputs:; 1;2;3;4;5;6
-    # try:
-    #     data['E[MWh]'] = data['E[Wh]'] / 1000000
-    # except Exception:
-    #     data['E[MWh]'] = data['E[kWh]'] / 1000
-    #
-    # data['PMin[W]'] = data['PMin[kW]'] * 1000
-    # data['PMax[W]'] = data['PMax[kW]'] * 1000
-    # data['P_set[W]'] = data['P_setToTSC[kW]'] * 1000
-    #
-    # data['P[W]'] = data['P[kW]'] * 1000
-    # data['P[W]'] = data['P[kW]'] * 1000
-    #
-    # data['Q[VAr]'] = data['Q[kvar]'] * 1000
-    # data['Q_set[VAr]'] = data['Q_setToTSC[kW]'] * 1000
-    #
-    # data['P_TSC[W]'] = data['P_TSC[kW]'] * 1000
-    # data['Q_TSC[W]'] = data['Q_TSC[kW]'] * 1000
-    #
-    # data['f[Hz]'] = data['f[mHz]'] / 1000
+
     # Calculate average Voltage
     data['U_avg'] = data[[c for c in data.columns if 'U_L' in c]].mean(axis=1)
     data = data.tz_localize('UTC').tz_convert('Europe/Paris')
@@ -293,12 +288,12 @@ def update_figure(fig, data):
             data_i['y'] = traces[data_i['name']]['y']
 
 
-def plot_df(data, slider=False):
+def plot_df(data, slider=False, traces_dict=TRACES):
 
     # Simple time plot
     figure: plotly.graph_objs._figure.Figure = plotly.tools.make_subplots()
 
-    traces = prepare_data_dict(data, TRACES)
+    traces = prepare_data_dict(data, traces_dict)
     for t in traces.values():
         figure.add_trace(go.Scatter(**t))
 
@@ -314,7 +309,7 @@ def plot_df(data, slider=False):
             # color="#1f77b4"
             # )
             position=0.0,
-            range=[-25e6, 25e6],
+            range=[-55e6, 55e6],
         ),
         yaxis2=dict(
             title="Freq(Hz)",
@@ -391,10 +386,6 @@ def make_app_store(name, figure, fig_detail):
     app = Dash(name)
     app.layout = html.Div(
         children=[
-            # html.H1(children=name),
-            # html.Div(children='''
-            # Dash: A web application framework for your data.
-            # '''),
             dcc.Graph(id='graph_detail', figure=fig_detail),
             dcc.Graph(id='graph_all', figure=figure),
             dcc.Interval(
@@ -423,6 +414,13 @@ def parse_args(args=[]):
         action="store_true",
         default=None,
         help="Writes the html files of the plots.",
+    )
+    parser.add_argument(
+        "--port",
+        dest='port',
+        action="store",
+        default=8050,
+        help="Select the port on the server where to plot.",
     )
     parser.add_argument(
         "--plot",
@@ -466,34 +464,125 @@ def parse_args(args=[]):
         const=None,
         help=f"Frequency to resample data. If not set, resample to {FREQ_RESAMPLE}, if no argument, no resample",
     )
+    parser.add_argument(
+        "--compare",
+        "-c",
+        dest='compare',
+        action="store",
+        help=f"Select second file to compare. Only available with argument 'file'",
+    )
     if Path(args).basename() == 'pydevconsole.py':
+        print(args)
         args = args[3:]
     else:
         args = args[1:]
-    # if not len(args) or '-u' in args or '--update' in args:
-    #     args.append(0)
 
-    return parser.parse_args(args)
+    args = parser.parse_args(args)
+
+    if not args.file and args.compare:
+        print(
+            "Argument 'compare' require to set argument 'file' as input as well. option 'compare' is ignored"
+        )
+    return args
+
+
+def plot_P_compare(data):
+    # print(data[['P[kW]', 'P[kW]_2', 'Q[kvar]', 'Q[kvar]_2'  ]])
+    fig: plotly.graph_objs._figure.Figure = plotly.tools.make_subplots()
+    fig.add_trace(
+        go.Scatter(
+            name='P_AWC1',
+            x=data['P[kW]_2'].values,
+            y=data['P[kW]'].values,
+            text=data.index.strftime('%Y-%m-%d %H:%M:%S'),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            name='Q_AWC1',
+            x=data['Q[kvar]_2'].values,
+            y=data['Q[kvar]'].values,
+            yaxis='y',
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            name='P/P2',
+            x=data['P[kW]_2'].values,
+            y=(data['P[kW]'] / data['P[kW]_2']).values,
+            yaxis='y2',
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            name='P-P2',
+            x=data['P[kW]_2'].values,
+            y=(data['P[kW]'] - data['P[kW]_2']).values,
+            yaxis='y3',
+        )
+    )
+    # fig.add_trace(go.Scatter(name='P_TSC', x=data['P[kW]_2'].values, y=data['P_TSC[kW]'].values, line=dict(color='cyan')))
+    # fig.add_trace(go.Scatter(
+    #     name='P_TSC/P2', x=data['P[kW]_2'].values, y=(data['P_TSC[kW]']/data['P[kW]_2']).values, yaxis='y2'
+    # ))
+    # fig.add_trace(go.Scatter(
+    #     name='P_TSC-P2', x=data['P[kW]_2'].values, y=(data['P_TSC[kW]'] - data['P[kW]_2']).values, yaxis='y3'
+    # ))
+    fig.update_layout(
+        # margin=dict(l=0, r=0, b=0.01, t=0),
+        xaxis=dict(
+            domain=[0.05, 0.95],
+            title="P_AWC2(kW)",
+            # range=[-55e3, 55e3],
+        ),
+        yaxis=dict(
+            title="P_AWC1; P_TSC",
+            position=0.0,
+            # range=[-55e3, 55e3],
+        ),
+        yaxis2=dict(
+            title="ratio",
+            overlaying="y",
+            side="right",
+            range=[0, 1.2],
+            position=0.95,
+        ),
+        yaxis3=dict(
+            title="difference (kW)",
+            overlaying="y",
+            side="right",
+            # range=[0, 1.2],
+            position=1,
+        ),
+        hovermode="x",
+    )
+    figure.update_traces(hovertemplate=None)
+    fig.show()
+    fig.write_html(folder / 'compare_P.html')
 
 
 if __name__ == '__main__':
     folder = Path(r'C:\Users\MLevy\Documents\2Acren')
+
     args = parse_args(sys.argv)
 
+    file2 = None
     if args.file:
         if Path(args.file).exists():
             file = Path(args.file)
         else:
             file = folder / args.file
+        if args.compare:
+            file2 = Path(args.compare)
     else:
         file = search_last_file_content(folder)
 
-    print(f"Reading file {file}:")
+    print(f"# Reading file {file} #")
     now = datetime.datetime.now()
-    data = read_file_data(file, int(args.skip))
+    data = read_data(file, int(args.skip), file2)
     nb_lines_read = len(data)
     print(
-        f"{nb_lines_read} lines read in {(datetime.datetime.now() - now).total_seconds()} seconds.    "
+        f"-> {nb_lines_read} lines read in {(datetime.datetime.now() - now).total_seconds()} seconds."
     )
 
     try:
@@ -518,12 +607,9 @@ if __name__ == '__main__':
         data_detail = select_last_data(data, detail_duration_minutes)
         figure_detail = plot_df(data_detail, slider=bool(args.file))
 
-    if args.plot:
-        figure.update_layout(title=file.stem)
-        figure.show()
-        if args.detail:
-            figure_detail.update_layout(title=file.stem + '_detail')
-            figure_detail.show()
+    figure.update_layout(title=file.stem)
+    if args.detail:
+        figure_detail.update_layout(title=file.stem + '_detail')
 
     if args.write:
         figure.write_html(file.replace(file.ext, '.html'))
@@ -532,7 +618,12 @@ if __name__ == '__main__':
                 file.replace(file.ext, '_detail.html')
             )  # , fileopt='extend'
 
-    if args.update and not args.file:
+    if args.plot:
+        figure.show()
+        if args.detail:
+            figure_detail.show()
+
+    if args.update:  # and not args.file:
         update_running = False
         app = make_app_store(name, figure, figure_detail)
 
@@ -614,4 +705,4 @@ if __name__ == '__main__':
             return figure_detail, figure  # , data
 
         print(f"Data loaded, {len(data)} lines read. Launching app")
-        app.run_server()
+        app.run_server(port=args.port)

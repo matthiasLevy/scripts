@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 
-import sys
-from path import Path
 import datetime
+import sys
 from argparse import ArgumentParser
-
-from plotly import express as px
-import plotly.graph_objects as go
-import plotly.graph_objs._figure
-import pandas as pd
 from io import StringIO
 
-from dash import Dash, html, dcc
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.graph_objs._figure
+from dash import Dash, dcc, html
 from dash.dependencies import Input, Output, State
+from path import Path
+from plotly import express as px
 
 # Using Plotly as default plot for pandas
 pd.set_option("plotting.backend", "plotly")

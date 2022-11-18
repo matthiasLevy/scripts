@@ -9,6 +9,8 @@ pendulum = "*"
 pymodbus = "*"
 dash = "*"
 path = "*"
+psutil = "*"
+isort = "*"
 
 [dev-packages]
 ipython = "*"
